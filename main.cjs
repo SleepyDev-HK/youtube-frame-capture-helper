@@ -5,65 +5,18 @@ const express = require("express");
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
-
-const PORT = 43117;
-const allowedOrigins = new Set(["https://youtube-frame-capture.vercel.app", "http://localhost:3000"]);
-const thresholds = { low: 0.48, normal: 0.34, high: 0.22 };
-let tray;
-const hasLock = app.requestSingleInstanceLock();
-if (!hasLock) app.quit();
-app.on("second-instance", () => {});
-app.on("open-url", (event) => event.preventDefault());
-
-function binary(name) {
-  const suffix = process.platform === "win32" ? ".exe" : "";
-  return path.join(process.resourcesPath, "bin", `${name}${suffix}`);
-}
-function run(command, args, onStderr) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { windowsHide: true }); let stderr = "";
-    child.stderr.on("data", (chunk) => { const text = String(chunk); stderr += text; if (onStderr) onStderr(text); });
-    child.on("error", reject); child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-4000))));
-  });
-}
-function stamp(seconds) {
-  const value = Math.max(0, Math.round(seconds));
-  return [Math.floor(value / 3600), Math.floor((value % 3600) / 60), value % 60].map((x) => String(x).padStart(2, "0")).join("-");
-}
-function safeTitle(value) { return String(value || "youtube-captures").replace(/[<>:"/\\|?*\x00-\x1F]/g, "").trim().slice(0, 80) || "youtube-captures"; }
-
-async function download(url, dir) {
-  const output = path.join(dir, "source.%(ext)s"); let json = "";
-  await new Promise((resolve, reject) => {
-    const child = spawn(binary("yt-dlp"), [url, "--dump-single-json", "--no-simulate", "--no-playlist", "--no-warnings", "-f", "bv*[height<=1080]+ba/b[height<=1080]/best", "--merge-output-format", "mp4", "--ffmpeg-location", binary("ffmpeg"), "-o", output], { windowsHide: true });
-    let stderr = ""; child.stdout.on("data", (c) => json += String(c)); child.stderr.on("data", (c) => stderr += String(c)); child.on("error", reject); child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-4000))));
-  });
-  const filename = (await fs.readdir(dir)).find((name) => name.startsWith("source."));
-  if (!filename) throw new Error("영상 데이터를 찾을 수 없습니다.");
-  let info = {}; try { info = JSON.parse(json); } catch {}
-  return { video: path.join(dir, filename), title: safeTitle(info.title) };
-}
-async function frames(request, video, out) {
-  const max = 120;
-  if (request.mode === "interval") {
-    await run(binary("ffmpeg"), ["-hide_banner", "-loglevel", "error", "-i", video, "-vf", `fps=1/${request.intervalSeconds},scale='min(1920,iw)':-2`, "-frames:v", String(max), "-q:v", "2", path.join(out, "capture_%03d.jpg")]);
-    const files = (await fs.readdir(out)).filter((name) => name.endsWith(".jpg")).sort(); const result = [];
-    for (let i = 0; i < files.length; i++) { const name = `capture_${String(i + 1).padStart(3, "0")}_${stamp(i * request.intervalSeconds)}.jpg`; await fs.rename(path.join(out, files[i]), path.join(out, name)); result.push({ path: path.join(out, name), filename: name, timestampSeconds: i * request.intervalSeconds }); }
-    return result;
-  }
-  let logs = ""; await run(binary("ffmpeg"), ["-hide_banner", "-i", video, "-vf", `select='gt(scene,${thresholds[request.sensitivity] || .34})',showinfo`, "-an", "-f", "null", "-"], (text) => logs += text);
-  const times = [0, ...Array.from(logs.matchAll(/pts_time:([0-9.]+)/g), (m) => Number(m[1]) + .35)]; const unique = [...new Set(times.map((t) => Math.round(t * 100) / 100))].slice(0, max); const result = [];
-  for (let i = 0; i < unique.length; i++) { const name = `capture_${String(i + 1).padStart(3, "0")}_${stamp(unique[i])}.jpg`; const target = path.join(out, name); await run(binary("ffmpeg"), ["-hide_banner", "-loglevel", "error", "-ss", String(unique[i]), "-i", video, "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2", "-q:v", "2", target]); result.push({ path: target, filename: name, timestampSeconds: unique[i] }); }
-  return result;
-}
-
-function startServer() {
-  const server = express(); server.use(express.json({ limit: "32kb" }));
-  server.use((req, res, next) => { const origin = req.headers.origin; if (origin && allowedOrigins.has(origin)) { res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Vary", "Origin"); res.setHeader("Access-Control-Allow-Private-Network", "true"); res.setHeader("Access-Control-Allow-Headers", "content-type"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); } if (req.method === "OPTIONS") return res.sendStatus(204); if (origin && !allowedOrigins.has(origin)) return res.status(403).json({ message: "허용되지 않은 사이트입니다." }); next(); });
-  server.get("/health", (_req, res) => res.json({ ok: true, version: app.getVersion() }));
-  server.post("/capture", async (req, res) => { const data = req.body || {}; if (!/^https?:\/\/(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\//i.test(data.url || "")) return res.status(400).json({ message: "YouTube URL을 확인해 주세요." }); const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ytcapture-")); try { const out = path.join(dir, "captures"); await fs.mkdir(out); const item = await download(data.url, dir); const captures = await frames(data, item.video, out); res.attachment(`${item.title}.zip`); res.type("application/zip"); const zip = archiver("zip", { zlib: { level: 6 } }); zip.pipe(res); captures.forEach((f) => zip.file(f.path, { name: f.filename })); zip.append(JSON.stringify({ source: data.url, captures: captures.map(({ filename, timestampSeconds }) => ({ filename, timestampSeconds })) }, null, 2), { name: "captures.json" }); res.on("close", () => fs.rm(dir, { recursive: true, force: true })); await zip.finalize(); } catch (error) { await fs.rm(dir, { recursive: true, force: true }); if (!res.headersSent) res.status(422).json({ message: error.message || "처리에 실패했습니다." }); } });
-  server.listen(PORT, "127.0.0.1");
-}
-
-app.whenReady().then(() => { app.setAsDefaultProtocolClient("ytcapture"); app.setLoginItemSettings({ openAtLogin: true }); startServer(); const icon = nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII="); tray = new Tray(icon); tray.setToolTip("YouTube Capture Helper"); tray.setContextMenu(Menu.buildFromTemplate([{ label: "웹사이트 열기", click: () => shell.openExternal("https://youtube-frame-capture.vercel.app") }, { type: "separator" }, { label: "종료", click: () => app.quit() }])); });
-app.on("window-all-closed", (event) => event.preventDefault());
+const crypto = require("crypto");
+const PORT=43117, origins=new Set(["https://youtube-frame-capture.vercel.app","http://localhost:3000"]), thresholds={low:.48,normal:.34,high:.22}, jobs=new Map(); let tray;
+if(!app.requestSingleInstanceLock()) app.quit(); app.on("open-url",e=>e.preventDefault()); app.on("second-instance",()=>{});
+const bin=n=>path.join(process.resourcesPath,"bin",n+(process.platform==="win32"?".exe":""));
+const safe=s=>String(s||"youtube-captures").replace(/[<>:"/\\|?*\x00-\x1F]/g,"").trim().slice(0,80)||"youtube-captures";
+const stamp=s=>{s=Math.max(0,Math.round(s));return[Math.floor(s/3600),Math.floor((s%3600)/60),s%60].map(x=>String(x).padStart(2,"0")).join("-")};
+const update=(j,p,s)=>{j.progress=Math.max(j.progress,Math.min(99,Math.round(p)));j.stage=s};
+function run(cmd,args,onData){return new Promise((ok,no)=>{const c=spawn(cmd,args,{windowsHide:true});let err="";c.stdout.on("data",x=>onData?.(String(x)));c.stderr.on("data",x=>{x=String(x);err+=x;onData?.(x)});c.on("error",no);c.on("close",code=>code===0?ok():no(new Error(err.slice(-4000))))})}
+async function download(j,url,dir){let json="",err="";const output=path.join(dir,"source.%(ext)s");await new Promise((ok,no)=>{const c=spawn(bin("yt-dlp"),[url,"--dump-single-json","--no-simulate","--no-playlist","--newline","-f","bv*[height<=2160]+ba/b[height<=2160]/best","--merge-output-format","mp4","--ffmpeg-location",bin("ffmpeg"),"-o",output],{windowsHide:true});c.stdout.on("data",x=>json+=String(x));c.stderr.on("data",x=>{x=String(x);err+=x;const m=x.match(/\[download\]\s+([0-9.]+)%/);if(m)update(j,5+Number(m[1])*.35,"영상 데이터를 준비하고 있습니다")});c.on("error",no);c.on("close",code=>code===0?ok():no(new Error(err.slice(-4000))))});const name=(await fs.readdir(dir)).find(n=>n.startsWith("source."));if(!name)throw Error("영상 데이터를 찾을 수 없습니다.");let info={};try{info=JSON.parse(json)}catch{}const f=info.requested_formats?.[0]||info;return{video:path.join(dir,name),title:safe(info.title),duration:Number(info.duration||0),hdr:/HDR|HLG|PQ/i.test(String(f.dynamic_range||info.dynamic_range||""))}}
+function filter(res,hdr){const size={"1080":[1920,1080],"720":[1280,720]}[res];const resize=size?`scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2`:"scale=trunc(iw/2)*2:trunc(ih/2)*2";const color=hdr?"zscale=t=linear:npl=100,format=gbrpf32le,tonemap=mobius,zscale=p=bt709:t=bt709:m=bt709:r=full":"";return[color,resize,"format=rgb24"].filter(Boolean).join(",")}
+async function one(item,out,time,name,vf){await run(bin("ffmpeg"),["-hide_banner","-loglevel","error","-ss",String(time),"-i",item.video,"-frames:v","1","-vf",vf,"-compression_level","3",path.join(out,name)])}
+async function frames(j,r,item,out){const vf=filter(r.resolution,item.hdr),result=[];let times=[];if(r.mode==="interval"){const count=Math.min(120,Math.max(1,Math.ceil(item.duration/r.intervalSeconds)));times=Array.from({length:count},(_,i)=>i*r.intervalSeconds)}else{update(j,46,"장면 전환을 분석하고 있습니다");let logs="";await run(bin("ffmpeg"),["-hide_banner","-i",item.video,"-vf",`select='gt(scene,${thresholds[r.sensitivity]||.34})',showinfo`,"-an","-f","null","-"],x=>logs+=x);times=[...new Set([0,...Array.from(logs.matchAll(/pts_time:([0-9.]+)/g),m=>Number(m[1])+.35)].map(t=>Math.round(t*100)/100))].slice(0,120);update(j,60,`${times.length}개 장면을 찾았습니다`)}for(let i=0;i<times.length;i++){const name=`capture_${String(i+1).padStart(3,"0")}_${stamp(times[i])}.png`;await one(item,out,times[i],name,vf);result.push({filename:name,timestampSeconds:times[i]});const base=r.mode==="interval"?48:60;update(j,base+((i+1)/times.length)*(95-base),`이미지를 추출하고 있습니다 (${i+1}/${times.length})`)}return result}
+async function processJob(j,r){try{update(j,2,"영상 정보를 확인하고 있습니다");const item=await download(j,r.url,j.dir);j.title=item.title;update(j,45,"캡처 준비를 하고 있습니다");j.captures=await frames(j,r,item,j.out);j.progress=100;j.stage="완료";j.status="done"}catch(e){j.status="error";j.error=e.message||"처리에 실패했습니다."}}
+function server(){const s=express();s.use(express.json({limit:"32kb"}));s.use((q,r,n)=>{const o=q.headers.origin;if(o&&origins.has(o)){r.setHeader("Access-Control-Allow-Origin",o);r.setHeader("Access-Control-Allow-Private-Network","true");r.setHeader("Access-Control-Allow-Headers","content-type");r.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS")}if(q.method==="OPTIONS")return r.sendStatus(204);if(o&&!origins.has(o))return r.sendStatus(403);n()});s.get("/health",(_,r)=>r.json({ok:true,version:app.getVersion()}));s.post("/jobs",async(q,r)=>{const d=q.body||{};if(!/^https?:\/\/(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\//i.test(d.url||""))return r.status(400).json({message:"YouTube URL을 확인해 주세요."});const id=crypto.randomUUID(),dir=await fs.mkdtemp(path.join(os.tmpdir(),"ytcapture-")),out=path.join(dir,"captures");await fs.mkdir(out);const j={id,dir,out,status:"working",progress:0,stage:"시작 중",captures:[],createdAt:Date.now()};jobs.set(id,j);processJob(j,d);r.status(202).json({id})});s.get("/jobs/:id",(q,r)=>{const j=jobs.get(q.params.id);if(!j)return r.sendStatus(404);r.json({status:j.status,progress:j.progress,stage:j.stage,error:j.error,title:j.title,captures:j.captures.map(c=>({...c,imageUrl:`/jobs/${j.id}/images/${encodeURIComponent(c.filename)}`,downloadUrl:`/jobs/${j.id}/files/${encodeURIComponent(c.filename)}`}))})});s.get("/jobs/:id/images/:name",(q,r)=>{const j=jobs.get(q.params.id);if(!j||!j.captures.some(c=>c.filename===q.params.name))return r.sendStatus(404);r.sendFile(path.join(j.out,q.params.name))});s.get("/jobs/:id/files/:name",(q,r)=>{const j=jobs.get(q.params.id);if(!j)return r.sendStatus(404);r.download(path.join(j.out,q.params.name))});s.get("/jobs/:id/download",(q,r)=>{const j=jobs.get(q.params.id);if(!j||j.status!=="done")return r.sendStatus(404);r.attachment(`${j.title}.zip`);const z=archiver("zip",{zlib:{level:4}});z.pipe(r);j.captures.forEach(c=>z.file(path.join(j.out,c.filename),{name:c.filename}));z.finalize()});s.listen(PORT,"127.0.0.1");setInterval(async()=>{for(const[id,j]of jobs)if(Date.now()-j.createdAt>3600000){jobs.delete(id);await fs.rm(j.dir,{recursive:true,force:true})}},600000)}
+app.whenReady().then(()=>{app.setAsDefaultProtocolClient("ytcapture");app.setLoginItemSettings({openAtLogin:true});server();tray=new Tray(nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII="));tray.setToolTip("YouTube Capture Helper");tray.setContextMenu(Menu.buildFromTemplate([{label:"웹사이트 열기",click:()=>shell.openExternal("https://youtube-frame-capture.vercel.app")},{type:"separator"},{label:"종료",click:()=>app.quit()}]))});app.on("window-all-closed",e=>e.preventDefault());
