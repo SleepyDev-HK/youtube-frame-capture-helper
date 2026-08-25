@@ -48,5 +48,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete helper-v0.3.1 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create helper-v0.3.1 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.3.1" --notes "Makes the Windows system-tray status icon visible."
+          gh release delete helper-v0.4.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create helper-v0.4.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.4.0" --notes "Faster SDR-first video-only capture with batched FFmpeg extraction."
