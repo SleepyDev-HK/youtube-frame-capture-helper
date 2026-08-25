@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
-    "dist": "npm run prepare:binaries && electron-builder"
+    "dist": "npm run prepare:binaries && electron-builder --publish never"
   },
   "dependencies": {
     "archiver": "7.0.1",
