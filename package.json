@@ -1,6 +1,6 @@
 {
   "name": "youtube-frame-capture-helper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local video processor for YouTube Frame Capture",
   "main": "main.cjs",
   "private": true,
@@ -23,8 +23,9 @@
     "asar": true,
     "files": ["main.cjs", "package.json"],
     "extraResources": [{ "from": "bin", "to": "bin" }],
+    "protocols": [{ "name": "YouTube Capture Helper", "schemes": ["ytcapture"] }],
     "win": { "target": ["nsis"], "artifactName": "YouTube-Capture-Helper-Windows-${version}.${ext}" },
     "mac": { "target": ["dmg"], "category": "public.app-category.utilities", "artifactName": "YouTube-Capture-Helper-macOS-${version}.${ext}", "identity": null },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "runAfterFinish": true }
   }
 }
