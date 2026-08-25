@@ -17,7 +17,7 @@ jobs:
         include:
           - os: windows-latest
             artifact: windows
-          - os: macos-13
+          - os: macos-latest
             artifact: macos
     runs-on: ${{ matrix.os }}
     steps:
