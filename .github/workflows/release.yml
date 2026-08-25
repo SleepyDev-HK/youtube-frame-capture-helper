@@ -48,5 +48,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete helper-v0.4.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create helper-v0.4.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.4.0" --notes "Faster SDR-first video-only capture with batched FFmpeg extraction."
+          gh release delete helper-v0.5.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create helper-v0.5.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.5.0" --notes "Restores the three most recent capture jobs for 24 hours across browser and app restarts."
