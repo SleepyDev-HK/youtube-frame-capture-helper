@@ -1,0 +1,52 @@
+name: Build helper installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["main.cjs", "package.json", "scripts/**", ".github/workflows/release.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows
+          - os: macos-13
+            artifact: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete helper-v0.1.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create helper-v0.1.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.1.0" --notes "Unsigned preview installers for Windows and macOS."
