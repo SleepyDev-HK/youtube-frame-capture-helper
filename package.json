@@ -1,6 +1,6 @@
 {
   "name": "youtube-frame-capture-helper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local video processor for YouTube Frame Capture",
   "main": "main.cjs",
   "private": true,
