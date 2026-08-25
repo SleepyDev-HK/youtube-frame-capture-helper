@@ -48,5 +48,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete helper-v0.2.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create helper-v0.2.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.2.0" --notes "Starts after installation, opens from the website, and launches automatically at login."
+          gh release delete helper-v0.3.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create helper-v0.3.0 artifacts/* --repo "$GITHUB_REPOSITORY" --title "YouTube Capture Helper v0.3.0" --notes "Real progress, lazy ZIP, color-preserving PNG, and selectable resolution."
