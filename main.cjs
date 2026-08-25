@@ -10,6 +10,10 @@ const PORT = 43117;
 const allowedOrigins = new Set(["https://youtube-frame-capture.vercel.app", "http://localhost:3000"]);
 const thresholds = { low: 0.48, normal: 0.34, high: 0.22 };
 let tray;
+const hasLock = app.requestSingleInstanceLock();
+if (!hasLock) app.quit();
+app.on("second-instance", () => {});
+app.on("open-url", (event) => event.preventDefault());
 
 function binary(name) {
   const suffix = process.platform === "win32" ? ".exe" : "";
@@ -61,5 +65,5 @@ function startServer() {
   server.listen(PORT, "127.0.0.1");
 }
 
-app.whenReady().then(() => { startServer(); const icon = nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII="); tray = new Tray(icon); tray.setToolTip("YouTube Capture Helper"); tray.setContextMenu(Menu.buildFromTemplate([{ label: "웹사이트 열기", click: () => shell.openExternal("https://youtube-frame-capture.vercel.app") }, { type: "separator" }, { label: "종료", click: () => app.quit() }])); });
+app.whenReady().then(() => { app.setAsDefaultProtocolClient("ytcapture"); app.setLoginItemSettings({ openAtLogin: true }); startServer(); const icon = nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII="); tray = new Tray(icon); tray.setToolTip("YouTube Capture Helper"); tray.setContextMenu(Menu.buildFromTemplate([{ label: "웹사이트 열기", click: () => shell.openExternal("https://youtube-frame-capture.vercel.app") }, { type: "separator" }, { label: "종료", click: () => app.quit() }])); });
 app.on("window-all-closed", (event) => event.preventDefault());
