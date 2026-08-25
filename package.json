@@ -1,0 +1,30 @@
+{
+  "name": "youtube-frame-capture-helper",
+  "version": "0.1.0",
+  "description": "Local video processor for YouTube Frame Capture",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "prepare:binaries": "node scripts/prepare-binaries.mjs",
+    "dist": "npm run prepare:binaries && electron-builder"
+  },
+  "dependencies": {
+    "archiver": "7.0.1",
+    "express": "4.21.2"
+  },
+  "devDependencies": {
+    "electron": "37.4.0",
+    "electron-builder": "26.0.12",
+    "ffmpeg-static": "5.3.0"
+  },
+  "build": {
+    "appId": "com.sleepydevhk.youtubecapturehelper",
+    "productName": "YouTube Capture Helper",
+    "asar": true,
+    "files": ["main.cjs", "package.json"],
+    "extraResources": [{ "from": "bin", "to": "bin" }],
+    "win": { "target": ["nsis"], "artifactName": "YouTube-Capture-Helper-Windows-${version}.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.utilities", "artifactName": "YouTube-Capture-Helper-macOS-${version}.${ext}", "identity": null },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}
