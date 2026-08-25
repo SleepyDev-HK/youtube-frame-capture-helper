@@ -1,4 +1,4 @@
-const { app, Menu, Tray, shell } = require("electron");
+const { app, Menu, Tray, shell, nativeImage } = require("electron");
 const archiver = require("archiver");
 const { spawn } = require("child_process");
 const express = require("express");
@@ -61,5 +61,5 @@ function startServer() {
   server.listen(PORT, "127.0.0.1");
 }
 
-app.whenReady().then(() => { startServer(); tray = new Tray(process.execPath); tray.setToolTip("YouTube Capture Helper"); tray.setContextMenu(Menu.buildFromTemplate([{ label: "웹사이트 열기", click: () => shell.openExternal("https://youtube-frame-capture.vercel.app") }, { type: "separator" }, { label: "종료", click: () => app.quit() }])); });
+app.whenReady().then(() => { startServer(); const icon = nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII="); tray = new Tray(icon); tray.setToolTip("YouTube Capture Helper"); tray.setContextMenu(Menu.buildFromTemplate([{ label: "웹사이트 열기", click: () => shell.openExternal("https://youtube-frame-capture.vercel.app") }, { type: "separator" }, { label: "종료", click: () => app.quit() }])); });
 app.on("window-all-closed", (event) => event.preventDefault());
